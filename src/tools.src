@@ -141,5 +141,6 @@ func call_tool(name, args) (text, is_error, known) {
     if name == "peage_set_limits" { text, is_error = tool_set_limits(args)  return }
     if name == "peage_verify_receipt" { text, is_error = tool_verify_receipt(args)  return }
     if name == "peage_solvency" { text, is_error = tool_solvency(args)  return }
+    if name == "peage_services" { text = services_json()  is_error = 0  return }
     known = 0
 }

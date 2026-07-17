@@ -25,8 +25,20 @@ func tools_json() (j) {
         "{\"name\":\"peage_paid_request\",\"description\":\"Call a peage-metered API with this wallet attached (X-Peage-Wallet header) — the merchant charges per call, bounded by your caps. Returns status + body; a 402 body explains how to fund.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"},\"method\":{\"type\":\"string\",\"description\":\"default GET\"},\"body\":{\"type\":\"string\",\"description\":\"request body for POST/PUT\"}},\"required\":[\"url\"]}}," +
         "{\"name\":\"peage_set_limits\",\"description\":\"Set the wallet's safety rails: max_charge_cents per call and daily_cap_cents per merchant. A merchant can never exceed them.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"max_charge_cents\":{\"type\":\"integer\"},\"daily_cap_cents\":{\"type\":\"integer\"}}}}," +
         "{\"name\":\"peage_verify_receipt\",\"description\":\"Publicly verify a signed peage receipt (from any charge or x402 settlement).\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"receipt\":{\"type\":\"string\"}},\"required\":[\"receipt\"]}}," +
-        "{\"name\":\"peage_solvency\",\"description\":\"Audit the rail: the live ledger invariant (everything funded == everything allocated), no auth.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}" +
+        "{\"name\":\"peage_solvency\",\"description\":\"Audit the rail: the live ledger invariant (everything funded == everything allocated), no auth.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}," +
+        "{\"name\":\"peage_services\",\"description\":\"Discover peage-metered services this wallet can pay — a directory of live merchants and what each costs. Then call one with peage_paid_request (which attaches your wallet). Use when you need an API/tool that charges per call.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}" +
         "]"
+}
+
+// peage_services — the live directory of peage merchants an agent can spend on.
+// Kept curated + tiny so the agent learns what's payable, then uses peage_paid_request.
+func services_json() (j) {
+    j = "{\"note\":\"call any of these with peage_paid_request (it attaches your X-Peage-Wallet); a 402 tells you to peage_topup\",\"services\":[" +
+        "{\"name\":\"relais\",\"what\":\"an inbox your agent can block on — a public URL that catches webhooks/OAuth callbacks/approvals, plus a /v1/wait long-poll. Free inbox is ephemeral (1h); pay ~5c for a persistent 30-day inbox with a stable URL.\",\"base\":\"https://relais.intrane.fr\",\"pay\":\"POST /v1/inboxes with your wallet -> a persistent inbox\",\"docs\":\"https://relais.intrane.fr/llms.txt\"}," +
+        "{\"name\":\"grepapi\",\"what\":\"agent-first lead-gen / SERP API. Free tier, then pay-per-lead overage.\",\"base\":\"https://api.grepapi.intrane.fr\",\"pay\":\"send X-Peage-Wallet to buy ingest past the free cap\",\"docs\":\"https://grepapi.intrane.fr\"}," +
+        "{\"name\":\"hart\",\"what\":\"publish self-contained HTML/JSX -> a live sandboxed URL. Free rate limit, then pay-per-publish overage.\",\"base\":\"https://hart.intrane.fr\",\"pay\":\"send X-Peage-Wallet past the free rate limit\",\"docs\":\"https://hart.intrane.fr/llms.txt\"}," +
+        "{\"name\":\"peage-demo\",\"what\":\"a 1-cent fortune to test the whole loop safely.\",\"base\":\"" + rail_url() + "\",\"pay\":\"GET /demo/fortune with your wallet\",\"docs\":\"" + rail_url() + "/llms.txt\"}" +
+        "]}"
 }
 
 func handle_message(line) {
@@ -43,7 +55,7 @@ func handle_message(line) {
         pv, perr := json_get(line, ".params.protocolVersion")
         proto := mcp_version_default()
         if perr == "" { proto = unq(pv) }
-        respond(id, "{\"protocolVersion\":" + json(proto) + ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"peage-mcp\",\"version\":\"" + app_version() + "\"},\"instructions\":\"peage gives this agent a prepaid EUR wallet for paying APIs per call. If no wallet is configured, call peage_setup once. Fund via peage_topup (your human pays a Stripe link). Spend via peage_paid_request. Docs: https://peage.intrane.fr/llms.txt\"}")
+        respond(id, "{\"protocolVersion\":" + json(proto) + ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"peage-mcp\",\"version\":\"" + app_version() + "\"},\"instructions\":\"peage gives this agent a prepaid EUR wallet for paying APIs per call. If no wallet is configured, call peage_setup once. Fund via peage_topup (your human pays a Stripe link). Spend via peage_paid_request. Call peage_services to discover what you can pay for — e.g. relais (a hosted inbox/webhook-catcher your agent can block on). Docs: https://peage.intrane.fr/llms.txt\"}")
         return
     }
     if method == "ping" { respond(id, "{}")  return }
