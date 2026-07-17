@@ -1,6 +1,6 @@
 // peage-mcp — the peage wallet as an MCP server (stdio).
 
-func app_version() (v) { v = "0.1.1" }
+func app_version() (v) { v = "0.1.2" }
 
 func help_text() (h) {
     h = "peage-mcp — give any MCP-capable agent a prepaid fiat wallet (peage rail)\n\n" +
