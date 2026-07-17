@@ -1,0 +1,79 @@
+// MCP stdio server: JSON-RPC 2.0, one message per line, responses flushed per line.
+// Implements: initialize, notifications/* (ignored), ping, tools/list, tools/call.
+// Unknown request methods get -32601. Notifications (no id) never get a response.
+
+func mcp_version_default() (v) { v = "2025-06-18" }
+
+func send(msg) {
+    println(msg)
+    flush()
+}
+
+func respond(id, result) {
+    send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":" + result + "}")
+}
+
+func respond_err(id, code, message) {
+    send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":" + str(code) + ",\"message\":" + json(message) + "}}")
+}
+
+func tools_json() (j) {
+    j = "[" +
+        "{\"name\":\"peage_setup\",\"description\":\"Create (once) this agent's prepaid peage wallet and store its token locally. Do this first if no wallet is configured.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"email\":{\"type\":\"string\",\"description\":\"operator contact email (optional)\"}}}}," +
+        "{\"name\":\"peage_status\",\"description\":\"Wallet balance (EUR cents), escrow, spending caps, and recent charges.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}," +
+        "{\"name\":\"peage_topup\",\"description\":\"Get a Stripe Checkout URL to fund the wallet. You cannot pay it yourself: give the URL to your human operator. Amounts are EUR cents (min 500 by default).\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"amount_cents\":{\"type\":\"integer\"},\"merchant_id\":{\"type\":\"string\",\"description\":\"optional: use this merchant's top-up minimum\"}},\"required\":[\"amount_cents\"]}}," +
+        "{\"name\":\"peage_paid_request\",\"description\":\"Call a peage-metered API with this wallet attached (X-Peage-Wallet header) — the merchant charges per call, bounded by your caps. Returns status + body; a 402 body explains how to fund.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"},\"method\":{\"type\":\"string\",\"description\":\"default GET\"},\"body\":{\"type\":\"string\",\"description\":\"request body for POST/PUT\"}},\"required\":[\"url\"]}}," +
+        "{\"name\":\"peage_set_limits\",\"description\":\"Set the wallet's safety rails: max_charge_cents per call and daily_cap_cents per merchant. A merchant can never exceed them.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"max_charge_cents\":{\"type\":\"integer\"},\"daily_cap_cents\":{\"type\":\"integer\"}}}}," +
+        "{\"name\":\"peage_verify_receipt\",\"description\":\"Publicly verify a signed peage receipt (from any charge or x402 settlement).\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"receipt\":{\"type\":\"string\"}},\"required\":[\"receipt\"]}}," +
+        "{\"name\":\"peage_solvency\",\"description\":\"Audit the rail: the live ledger invariant (everything funded == everything allocated), no auth.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}" +
+        "]"
+}
+
+func handle_message(line) {
+    mv, merr := json_get(line, ".method")
+    if merr != "" { return }                      // not a request; ignore
+    method := unq(mv)
+    idv, iderr := json_get(line, ".id")
+    if iderr != "" {
+        // notification — never respond (notifications/initialized, notifications/cancelled, …)
+        return
+    }
+    id := idv
+    if method == "initialize" {
+        pv, perr := json_get(line, ".params.protocolVersion")
+        proto := mcp_version_default()
+        if perr == "" { proto = unq(pv) }
+        respond(id, "{\"protocolVersion\":" + json(proto) + ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"peage-mcp\",\"version\":\"" + app_version() + "\"},\"instructions\":\"peage gives this agent a prepaid EUR wallet for paying APIs per call. If no wallet is configured, call peage_setup once. Fund via peage_topup (your human pays a Stripe link). Spend via peage_paid_request. Docs: https://peage.intrane.fr/llms.txt\"}")
+        return
+    }
+    if method == "ping" { respond(id, "{}")  return }
+    if method == "tools/list" { respond(id, "{\"tools\":" + tools_json() + "}")  return }
+    if method == "tools/call" {
+        nv, nerr := json_get(line, ".params.name")
+        if nerr != "" { respond_err(id, -32602, "params.name required")  return }
+        args, aerr := json_get(line, ".params.arguments")
+        if aerr != "" { args = "{}" }
+        text, is_error, known := call_tool(unq(nv), args)
+        if known == 0 { respond_err(id, -32602, "unknown tool: " + unq(nv))  return }
+        flag := "false"
+        if is_error == 1 { flag = "true" }
+        respond(id, "{\"content\":[{\"type\":\"text\",\"text\":" + json(text) + "}],\"isError\":" + flag + "}")
+        return
+    }
+    respond_err(id, -32601, "method not found: " + method)
+}
+
+func run_stdio() {
+    write(2, "{\"event\":\"peage-mcp listening on stdio\",\"rail\":\"" + rail_url() + "\"}\n")
+    empties := 0
+    for {
+        line := input()
+        if line == "" {
+            empties = empties + 1
+            if empties >= 3 { return }            // EOF (input() yields "" repeatedly)
+            continue
+        }
+        empties = 0
+        handle_message(line)
+    }
+}

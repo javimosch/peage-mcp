@@ -1,0 +1,26 @@
+// peage-mcp — the peage wallet as an MCP server (stdio).
+
+func app_version() (v) { v = "0.1.0" }
+
+func help_text() (h) {
+    h = "peage-mcp — give any MCP-capable agent a prepaid fiat wallet (peage rail)\n\n" +
+        "usage: peage-mcp serve        run the MCP server on stdio (what your agent config runs)\n" +
+        "       peage-mcp version | help\n\n" +
+        "config: token at ~/.peage-mcp.json (or PEAGE_WALLET_TOKEN); rail via PEAGE_URL\n" +
+        "        (default https://peage.intrane.fr)\n\n" +
+        "agent config (Claude Code: .mcp.json / Claude Desktop: claude_desktop_config.json):\n" +
+        "  {\"mcpServers\":{\"peage\":{\"command\":\"/path/to/peage-mcp\",\"args\":[\"serve\"]}}}\n"
+}
+
+func main() {
+    a := args()
+    cmd := "help"
+    if len(a) > 1 { cmd = a[1] }
+    if cmd == "serve" {
+        run_stdio()
+    } else if cmd == "version" {
+        println("{\"name\":\"peage-mcp\",\"version\":\"" + app_version() + "\"}")
+    } else {
+        println(help_text())
+    }
+}

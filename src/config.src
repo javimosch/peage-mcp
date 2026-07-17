@@ -1,0 +1,41 @@
+// Wallet credential storage + rail endpoint.
+// Token resolution order: PEAGE_WALLET_TOKEN env > config file (~/.peage-mcp.json).
+// The config file is chmod-sensitive material — it holds the wallet token.
+
+func rail_url() (u) {
+    u = env("PEAGE_URL")
+    if u == "" { u = "https://peage.intrane.fr" }
+}
+
+func config_path() (p) {
+    p = env("PEAGE_MCP_CONFIG")
+    if p == "" { p = env("HOME") + "/.peage-mcp.json" }
+}
+
+func stored_token() (t) {
+    t = env("PEAGE_WALLET_TOKEN")
+    if t != "" { return }
+    raw := read_file(config_path())
+    if raw == "" { return }
+    v, err := json_get(raw, ".token")
+    if err == "" { t = unq(v) }
+}
+
+func stored_wallet_id() (id) {
+    id = ""
+    raw := read_file(config_path())
+    if raw == "" { return }
+    v, err := json_get(raw, ".wallet_id")
+    if err == "" { id = unq(v) }
+}
+
+func store_wallet(wallet_id, token) {
+    w := write_file(config_path(), "{\"wallet_id\":" + json(wallet_id) + ",\"token\":" + json(token) + "}\n")
+}
+
+func unq(s) (out) {
+    out = s
+    if len(s) >= 2 && has_prefix(s, "\"") && has_suffix(s, "\"") {
+        out = substr(s, 1, len(s) - 1)
+    }
+}

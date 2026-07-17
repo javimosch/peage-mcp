@@ -1,0 +1,145 @@
+// The seven wallet tools. Each returns (text, is_error): text is what the agent
+// reads — raw JSON from the rail where possible, with a "next" hint when action
+// is needed. All rail calls go over https via http_request.
+
+func need_token() (t, missing) {
+    missing = 0
+    t = stored_token()
+    if t == "" {
+        missing = 1
+    }
+}
+
+func no_wallet_text() (s) {
+    s = "{\"error\":\"no wallet configured\",\"fix\":\"call the peage_setup tool once (it mints a wallet and stores the token in " + config_path() + "), or set PEAGE_WALLET_TOKEN\"}"
+}
+
+func tool_setup(args) (text, is_error) {
+    is_error = 0
+    existing := stored_token()
+    if existing != "" {
+        text = "{\"ok\":1,\"note\":\"a wallet is already configured — call peage_status; delete " + config_path() + " to start over\",\"wallet_id\":" + json(stored_wallet_id()) + "}"
+        return
+    }
+    emv, emerr := json_get(args, ".email")
+    body := "{}"
+    if emerr == "" { body = "{\"email\":" + emv + "}" }
+    status, resp, herr := http_request("POST", rail_url() + "/v1/wallets", []string{"content-type: application/json"}, body)
+    if herr != "" || status != 201 {
+        is_error = 1
+        text = "{\"error\":\"rail unreachable or refused\",\"status\":" + str(status) + ",\"body\":" + json(resp) + "}"
+        return
+    }
+    wv, _ := json_get(resp, ".wallet_id")
+    tv, terr := json_get(resp, ".token")
+    if terr != "" { is_error = 1  text = "{\"error\":\"no token in response\"}"  return }
+    store_wallet(unq(wv), unq(tv))
+    text = "{\"ok\":1,\"wallet_id\":" + wv + ",\"balance_cents\":0,\"token_stored_at\":" + json(config_path()) + ",\"next\":\"fund it with the peage_topup tool — you will get a Stripe Checkout URL to hand to your human\"}"
+}
+
+func tool_status(args) (text, is_error) {
+    is_error = 0
+    t, missing := need_token()
+    if missing == 1 { is_error = 1  text = no_wallet_text()  return }
+    status, resp, herr := http_request("GET", rail_url() + "/v1/wallet", []string{"authorization: Bearer " + t}, "")
+    if herr != "" { is_error = 1  text = "{\"error\":\"rail unreachable\"}"  return }
+    if status != 200 { is_error = 1 }
+    text = resp
+}
+
+func tool_topup(args) (text, is_error) {
+    is_error = 0
+    t, missing := need_token()
+    if missing == 1 { is_error = 1  text = no_wallet_text()  return }
+    amv, amerr := json_get(args, ".amount_cents")
+    if amerr != "" { is_error = 1  text = "{\"error\":\"amount_cents required (EUR cents, e.g. 1000 = 10 EUR)\"}"  return }
+    body := "{\"amount_cents\":" + amv
+    miv, mierr := json_get(args, ".merchant_id")
+    if mierr == "" { body = body + ",\"merchant_id\":" + miv }
+    body = body + "}"
+    status, resp, herr := http_request("POST", rail_url() + "/v1/topup", []string{"content-type: application/json", "authorization: Bearer " + t}, body)
+    if herr != "" { is_error = 1  text = "{\"error\":\"rail unreachable\"}"  return }
+    if status != 200 { is_error = 1  text = resp  return }
+    uv, _ := json_get(resp, ".url")
+    av, _ := json_get(resp, ".amount_cents")
+    text = "{\"ok\":1,\"checkout_url\":" + uv + ",\"amount_cents\":" + av + ",\"next\":\"give this URL to your human operator to pay by card — you cannot pay it yourself. The wallet credits automatically within seconds of payment; confirm with peage_status.\"}"
+}
+
+// tool_paid_request: fetch any peage-metered API with the wallet attached.
+// The X-Peage-Wallet header is how merchants charge you — your caps bound the risk.
+func tool_paid_request(args) (text, is_error) {
+    is_error = 0
+    t, missing := need_token()
+    if missing == 1 { is_error = 1  text = no_wallet_text()  return }
+    uv, uerr := json_get(args, ".url")
+    if uerr != "" { is_error = 1  text = "{\"error\":\"url required\"}"  return }
+    url := unq(uv)
+    if has_prefix(url, "https://") == false && has_prefix(url, "http://") == false {
+        is_error = 1
+        text = "{\"error\":\"url must be absolute (http/https)\"}"
+        return
+    }
+    mv, merr := json_get(args, ".method")
+    method := "GET"
+    if merr == "" { method = to_upper(unq(mv)) }
+    bv, berr := json_get(args, ".body")
+    body := ""
+    if berr == "" { body = unq(bv) }
+    status, resp, herr := http_request(method, url, []string{"x-peage-wallet: " + t, "content-type: application/json"}, body)
+    if herr != "" { is_error = 1  text = "{\"error\":\"request failed\",\"detail\":" + json(herr) + "}"  return }
+    if len(resp) > 6000 { resp = substr(resp, 0, 6000) + "…[truncated]" }
+    note := ""
+    if status == 402 { note = ",\"note\":\"402 = the wallet is short or the merchant needs payment — the body says exactly how to fix it (usually peage_topup)\"" }
+    text = "{\"status\":" + str(status) + ",\"body\":" + json(resp) + note + "}"
+    if status >= 400 { is_error = 1 }
+}
+
+func tool_set_limits(args) (text, is_error) {
+    is_error = 0
+    t, missing := need_token()
+    if missing == 1 { is_error = 1  text = no_wallet_text()  return }
+    body := "{"
+    mcv, mcerr := json_get(args, ".max_charge_cents")
+    if mcerr == "" { body = body + "\"max_charge_cents\":" + mcv }
+    dcv, dcerr := json_get(args, ".daily_cap_cents")
+    if dcerr == "" {
+        if mcerr == "" { body = body + "," }
+        body = body + "\"daily_cap_cents\":" + dcv
+    }
+    body = body + "}"
+    status, resp, herr := http_request("POST", rail_url() + "/v1/wallet/limits", []string{"content-type: application/json", "authorization: Bearer " + t}, body)
+    if herr != "" { is_error = 1  text = "{\"error\":\"rail unreachable\"}"  return }
+    if status != 200 { is_error = 1 }
+    text = resp
+}
+
+func tool_verify_receipt(args) (text, is_error) {
+    is_error = 0
+    rv, rerr := json_get(args, ".receipt")
+    if rerr != "" { is_error = 1  text = "{\"error\":\"receipt required (c_....<hmac>)\"}"  return }
+    status, resp, herr := http_request("GET", rail_url() + "/v1/receipts?r=" + url_encode(unq(rv)), []string{}, "")
+    if herr != "" { is_error = 1  text = "{\"error\":\"rail unreachable\"}"  return }
+    if status != 200 { is_error = 1 }
+    text = resp
+}
+
+func tool_solvency(args) (text, is_error) {
+    is_error = 0
+    status, resp, herr := http_request("GET", rail_url() + "/v1/solvency", []string{}, "")
+    if herr != "" { is_error = 1  text = "{\"error\":\"rail unreachable\"}"  return }
+    if status != 200 { is_error = 1 }
+    text = resp
+}
+
+// dispatch by tool name -> (text, is_error, known)
+func call_tool(name, args) (text, is_error, known) {
+    known = 1
+    if name == "peage_setup" { text, is_error = tool_setup(args)  return }
+    if name == "peage_status" { text, is_error = tool_status(args)  return }
+    if name == "peage_topup" { text, is_error = tool_topup(args)  return }
+    if name == "peage_paid_request" { text, is_error = tool_paid_request(args)  return }
+    if name == "peage_set_limits" { text, is_error = tool_set_limits(args)  return }
+    if name == "peage_verify_receipt" { text, is_error = tool_verify_receipt(args)  return }
+    if name == "peage_solvency" { text, is_error = tool_solvency(args)  return }
+    known = 0
+}
