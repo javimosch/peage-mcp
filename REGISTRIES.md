@@ -41,16 +41,21 @@ The auth key is in the vault-adjacent backup `~/backups/peage-mcp/mcp-registry-d
 (and the apex TXT `v=MCPv1; k=ed25519; p=…` on intrane.fr must stay in DNS). If the key is
 lost, generate a new ed25519 pair and update the apex TXT — that re-grants the namespace.
 
-### Cross-platform binaries
-- **Linux/x86_64** — shipped (v0.1.2 `.mcpb`, in the registry).
-- **macOS (universal: x86_64 + arm64)** — cross-compiled from Linux via `scripts/xbuild-macos.sh`
-  (zig + zig-built static OpenSSL). Structurally verified: valid universal Mach-O, both slices,
-  **only `/usr/lib/libSystem.B.dylib`** as a dep, no undefined symbols. **Not yet run on real
-  macOS** — smoke-test `./peage-mcp version` on a Mac before adding it to `server.json`.
-  Reproduce: `./scripts/xbuild-macos.sh arm64` / `x86_64`.
+### Cross-platform binaries — both in the registry (v0.1.3)
+- **Linux/x86_64** — `.mcpb`, in the registry.
+- **macOS (universal: x86_64 + arm64)** — **built + verified natively in CI**
+  (`.github/workflows/macos.yml`, one Apple-Silicon runner): arm64 native build **runs + makes a
+  live TLS call to the rail** (`peage_solvency` → `solvent:true`); x86_64 via Xcode `clang -arch x86_64`
+  + a self-built (cached) static OpenSSL, executed under Rosetta on the runner; `lipo`-fused into a
+  universal `.mcpb` and attached to the tagged release. In the registry as of **v0.1.3**.
+  A from-Linux fallback also exists: `scripts/xbuild-macos.sh {arm64,x86_64}` (zig).
 - **Windows** — blocked: machin's runtime C is POSIX-only (sockets/pthread/termios/mmap), so
   `zig cc -target x86_64-windows` fails at `sys/socket.h`. Needs a runtime port (winsock/win32),
   tracked in **[machin#517](https://github.com/javimosch/machin/issues/517)** — not a bundle problem.
+
+**Cutting a release:** bump `app_version` + `manifest.json` + `server.json` versions, `./package.sh`,
+`gh release create vX.Y.Z peage-mcp.mcpb` (the tag push auto-runs the macOS workflow → attaches the
+universal `.mcpb`), set both `fileSha256`s from the release assets, then `mcp-publisher publish`.
 
 ### 5. Smithery (smithery.ai)  — lower priority
 Smithery is hosted and expects a Docker/npm deployable; a local stdio binary is an awkward
