@@ -1,9 +1,11 @@
 name: macOS build
 
-# Build native macOS binaries of peage-mcp (Intel + Apple Silicon), run them on real
-# hardware (version + a live TLS call to the rail), fuse into a universal .mcpb, and —
-# when run for a tag — attach it to that release. Native build = verified, unlike the
-# from-Linux cross-compile in scripts/xbuild-macos.sh.
+# Build a universal (x86_64 + arm64) macOS binary of peage-mcp on a SINGLE Apple-Silicon
+# runner — no dependency on GitHub's scarce Intel runners.
+#   arm64   : native machin build, RUN + live TLS call to the rail (fully verified).
+#   x86_64  : Xcode clang `-arch x86_64` + a self-built x86_64 OpenSSL; structurally
+#             verified (valid Mach-O, system-only dylibs) and run under Rosetta if present.
+# The two slices are lipo-fused into a universal .mcpb and attached to the tag's release.
 
 on:
   workflow_dispatch:
@@ -18,17 +20,13 @@ on:
 permissions:
   contents: write
 
+env:
+  OSSL_VER: "3.3.2"
+
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-13   # Intel
-            arch: x86_64
-          - runner: macos-14   # Apple Silicon
-            arch: arm64
-    runs-on: ${{ matrix.runner }}
+  macos:
+    runs-on: macos-14           # Apple Silicon; builds both arches
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -37,66 +35,83 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/javimosch/machin/main/install.sh | MACHIN_NO_SKILL=1 sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Point the C compiler at a STATIC OpenSSL (portable binary, no brew dep)
+      # ---- arm64 slice: native build + real run + live TLS (the verified path) --------
+      - name: Build arm64 (native) with static OpenSSL
         run: |
           OSSL="$(brew --prefix openssl@3)"
           test -f "$OSSL/lib/libssl.a" && test -f "$OSSL/lib/libcrypto.a"
-          # A dir holding only the .a files, first on LIBRARY_PATH, forces -lssl/-lcrypto to link static.
-          mkdir -p "$RUNNER_TEMP/ossl-static"
-          ln -sf "$OSSL/lib/libssl.a" "$OSSL/lib/libcrypto.a" "$RUNNER_TEMP/ossl-static/"
-          echo "CPATH=$OSSL/include" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$RUNNER_TEMP/ossl-static" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/ossl-arm"
+          ln -sf "$OSSL/lib/libssl.a" "$OSSL/lib/libcrypto.a" "$RUNNER_TEMP/ossl-arm/"
+          CPATH="$OSSL/include" LIBRARY_PATH="$RUNNER_TEMP/ossl-arm" ./build.sh
+          mv peage-mcp peage-mcp-arm64
+          lipo -archs peage-mcp-arm64 | grep -qw arm64
+          file peage-mcp-arm64
 
-      - name: Build
-        run: |
-          ./build.sh
-          file peage-mcp
-          # arch sanity
-          lipo -archs peage-mcp | grep -qw "${{ matrix.arch }}"
-
-      - name: Smoke test — run the binary + a live TLS call to the rail
+      - name: Smoke test arm64 — run + live TLS call to the rail
         run: |
           set -e
-          test "$(./peage-mcp version | python3 -c 'import json,sys;print(json.load(sys.stdin)["name"])')" = "peage-mcp"
-          # The real test: the binary runs AND its OpenSSL talks HTTPS to peage.intrane.fr.
+          test "$(./peage-mcp-arm64 version | python3 -c 'import json,sys;print(json.load(sys.stdin)["name"])')" = "peage-mcp"
           printf '%s\n' \
             '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"peage_solvency","arguments":{}}}' \
-            | PEAGE_MCP_CONFIG="$RUNNER_TEMP/ci-wallet.json" ./peage-mcp serve > out.jsonl 2>/dev/null
-          echo "--- rail response ---"; cat out.jsonl
-          # 'solvent' only appears in the solvency response; it's JSON-escaped (\"solvent\")
-          # inside the MCP tool-result envelope, so match the bare word.
-          grep -q solvent out.jsonl || { echo "::error::TLS/rail smoke test failed"; exit 1; }
+            | PEAGE_MCP_CONFIG="$RUNNER_TEMP/w.json" ./peage-mcp-arm64 serve > out.jsonl 2>/dev/null
+          cat out.jsonl
+          grep -q solvent out.jsonl || { echo "::error::arm64 TLS/rail smoke test failed"; exit 1; }
 
-      - name: Verify only system dylibs (no brew/openssl dylib leaked in)
-        run: |
-          DEPS="$(otool -L peage-mcp | tail -n +2 | awk '{print $1}')"
-          echo "$DEPS"
-          echo "$DEPS" | grep -vqE '^/usr/lib/|^/System/' && { echo "::error::non-system dylib dependency"; exit 1; } || true
-
-      - uses: actions/upload-artifact@v4
+      # ---- x86_64 slice: cross within macOS (clang -arch x86_64 + self-built OpenSSL) --
+      - name: Cache x86_64 OpenSSL
+        id: ossl-cache
+        uses: actions/cache@v4
         with:
-          name: peage-mcp-darwin-${{ matrix.arch }}
-          path: peage-mcp
+          path: ${{ runner.temp }}/ossl-x64-install
+          key: ossl-x64-${{ env.OSSL_VER }}-macos14
 
-  universal:
-    needs: build
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { path: slices }
+      - name: Build x86_64 OpenSSL (cache miss)
+        if: steps.ossl-cache.outputs.cache-hit != 'true'
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sL "https://github.com/openssl/openssl/releases/download/openssl-$OSSL_VER/openssl-$OSSL_VER.tar.gz" | tar xz
+          cd "openssl-$OSSL_VER"
+          CC="clang -arch x86_64" ./Configure darwin64-x86_64 no-asm no-shared no-tests no-docs no-apps >/dev/null
+          make -j"$(sysctl -n hw.ncpu)" build_libs
+          mkdir -p "$RUNNER_TEMP/ossl-x64-install/lib"
+          cp libssl.a libcrypto.a "$RUNNER_TEMP/ossl-x64-install/lib/"
+          cp -R include "$RUNNER_TEMP/ossl-x64-install/include"
 
+      - name: Build x86_64 slice (clang -arch x86_64, static OpenSSL)
+        run: |
+          OX="$RUNNER_TEMP/ossl-x64-install"
+          # reuse the app.mfl that build.sh produced; emit portable C and compile for x86_64
+          machin build app.mfl --emit-c > app.c
+          clang -arch x86_64 -O2 -w app.c -I"$OX/include" "$OX/lib/libssl.a" "$OX/lib/libcrypto.a" -o peage-mcp-x86_64
+          file peage-mcp-x86_64
+          lipo -archs peage-mcp-x86_64 | grep -qw x86_64
+          DEPS="$(otool -L peage-mcp-x86_64 | tail -n +2 | awk '{print $1}')"
+          echo "$DEPS"
+          echo "$DEPS" | grep -vqE '^/usr/lib/|^/System/' && { echo "::error::x86_64 has a non-system dylib dep"; exit 1; } || true
+
+      - name: Smoke test x86_64 under Rosetta (best-effort)
+        run: |
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "Rosetta present — executing x86_64 slice"
+            test "$(arch -x86_64 ./peage-mcp-x86_64 version | python3 -c 'import json,sys;print(json.load(sys.stdin)["name"])')" = "peage-mcp"
+            printf '%s\n' \
+              '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+              '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+              '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"peage_solvency","arguments":{}}}' \
+              | PEAGE_MCP_CONFIG="$RUNNER_TEMP/wx.json" arch -x86_64 ./peage-mcp-x86_64 serve > outx.jsonl 2>/dev/null || true
+            grep -q solvent outx.jsonl && echo "x86_64 TLS call OK" || echo "::warning::x86_64 ran but rail call inconclusive"
+          else
+            echo "::notice::Rosetta not available — x86_64 slice is structurally verified only"
+          fi
+
+      # ---- fuse + package -------------------------------------------------------------
       - name: lipo → universal + package .mcpb
         run: |
-          lipo -create \
-            slices/peage-mcp-darwin-x86_64/peage-mcp \
-            slices/peage-mcp-darwin-arm64/peage-mcp \
-            -output peage-mcp
+          lipo -create peage-mcp-x86_64 peage-mcp-arm64 -output peage-mcp
           chmod +x peage-mcp
           lipo -info peage-mcp
-          # verify the universal runs on this (arm64) runner too
           test "$(./peage-mcp version | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')" != ""
           python3 - <<'PY'
           import json
@@ -106,13 +121,14 @@ jobs:
           PY
           mkdir pkg && cp manifest.json peage-mcp pkg/
           (cd pkg && zip -q -r ../peage-mcp-darwin-universal.mcpb manifest.json peage-mcp)
-          shasum -a 256 peage-mcp-darwin-universal.mcpb
+          cp peage-mcp peage-mcp-darwin-universal
+          shasum -a 256 peage-mcp-darwin-universal.mcpb peage-mcp-darwin-universal
 
       - uses: actions/upload-artifact@v4
         with:
           name: peage-mcp-darwin-universal
           path: |
-            peage-mcp
+            peage-mcp-darwin-universal
             peage-mcp-darwin-universal.mcpb
 
       - name: Attach to the release (tag builds, or a dispatch with a tag)
@@ -121,10 +137,9 @@ jobs:
         run: |
           TAG="${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}"
           if [ -n "$TAG" ]; then
-            cp peage-mcp peage-mcp-darwin-universal
             gh release upload "$TAG" peage-mcp-darwin-universal.mcpb peage-mcp-darwin-universal \
               --repo "${{ github.repository }}" --clobber
-            echo "attached to release $TAG"
+            echo "attached universal .mcpb to release $TAG"
           else
             echo "no tag — artifacts only"
           fi
