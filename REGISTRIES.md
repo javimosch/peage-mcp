@@ -41,8 +41,16 @@ The auth key is in the vault-adjacent backup `~/backups/peage-mcp/mcp-registry-d
 (and the apex TXT `v=MCPv1; k=ed25519; p=…` on intrane.fr must stay in DNS). If the key is
 lost, generate a new ed25519 pair and update the apex TXT — that re-grants the namespace.
 
-Note: the bundled binary is **linux/x86_64**. Most Claude Desktop users are mac/windows, so
-a cross-compiled bundle (machin → darwin/windows) is the follow-up that widens reach.
+### Cross-platform binaries
+- **Linux/x86_64** — shipped (v0.1.2 `.mcpb`, in the registry).
+- **macOS (universal: x86_64 + arm64)** — cross-compiled from Linux via `scripts/xbuild-macos.sh`
+  (zig + zig-built static OpenSSL). Structurally verified: valid universal Mach-O, both slices,
+  **only `/usr/lib/libSystem.B.dylib`** as a dep, no undefined symbols. **Not yet run on real
+  macOS** — smoke-test `./peage-mcp version` on a Mac before adding it to `server.json`.
+  Reproduce: `./scripts/xbuild-macos.sh arm64` / `x86_64`.
+- **Windows** — blocked: machin's runtime C is POSIX-only (sockets/pthread/termios/mmap), so
+  `zig cc -target x86_64-windows` fails at `sys/socket.h`. Needs a runtime port (winsock/win32),
+  tracked in **[machin#517](https://github.com/javimosch/machin/issues/517)** — not a bundle problem.
 
 ### 5. Smithery (smithery.ai)  — lower priority
 Smithery is hosted and expects a Docker/npm deployable; a local stdio binary is an awkward
