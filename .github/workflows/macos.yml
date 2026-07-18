@@ -31,9 +31,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install machin (native macOS binary)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          curl -fsSL https://raw.githubusercontent.com/javimosch/machin/main/install.sh | MACHIN_NO_SKILL=1 sh
+          # Use gh (authenticated) instead of install.sh's anonymous api.github.com call,
+          # which rate-limits (403) on shared runners.
+          mkdir -p "$HOME/.local/bin"
+          TAG="$(gh release view --repo javimosch/machin --json tagName -q .tagName)"
+          gh release download "$TAG" --repo javimosch/machin \
+            --pattern 'machin-*-darwin-arm64' --output "$HOME/.local/bin/machin"
+          chmod +x "$HOME/.local/bin/machin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/machin" version
 
       # ---- arm64 slice: native build + real run + live TLS (the verified path) --------
       - name: Build arm64 (native) with static OpenSSL
