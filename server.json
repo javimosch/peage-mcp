@@ -6,15 +6,42 @@
     "url": "https://github.com/javimosch/peage-mcp",
     "source": "github"
   },
-  "version": "0.1.2",
+  "version": "0.1.3",
   "websiteUrl": "https://peage.intrane.fr",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/javimosch/peage-mcp/releases/download/v0.1.2/peage-mcp.mcpb",
-      "version": "0.1.2",
-      "fileSha256": "d8fd5075989031c32ba1e5f5f55532334ae4203e4776ee7b5ae7fbf7a95b8c47",
-      "transport": { "type": "stdio" },
+      "identifier": "https://github.com/javimosch/peage-mcp/releases/download/v0.1.3/peage-mcp.mcpb",
+      "version": "0.1.3",
+      "fileSha256": "841635f53c1889ce55f1f8ba799491e4a1216bda48afeb1dfb03001e354eaaae",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PEAGE_URL",
+          "description": "Rail instance to target (default https://peage.intrane.fr). Point at a self-hosted or staging rail.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PEAGE_WALLET_TOKEN",
+          "description": "Existing wallet token (pw_...). If unset, peage_setup mints one and stores it at ~/.peage-mcp.json.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/javimosch/peage-mcp/releases/download/v0.1.3/peage-mcp-darwin-universal.mcpb",
+      "version": "0.1.3",
+      "fileSha256": "fbf771e33536880342105b86857758612fe92bbbbbe572b97587d625ebd4b75c",
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "PEAGE_URL",
