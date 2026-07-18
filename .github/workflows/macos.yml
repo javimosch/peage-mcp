@@ -65,7 +65,9 @@ jobs:
             '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"peage_solvency","arguments":{}}}' \
             | PEAGE_MCP_CONFIG="$RUNNER_TEMP/ci-wallet.json" ./peage-mcp serve > out.jsonl 2>/dev/null
           echo "--- rail response ---"; cat out.jsonl
-          grep -q '"solvent"' out.jsonl || { echo "::error::TLS/rail smoke test failed"; exit 1; }
+          # 'solvent' only appears in the solvency response; it's JSON-escaped (\"solvent\")
+          # inside the MCP tool-result envelope, so match the bare word.
+          grep -q solvent out.jsonl || { echo "::error::TLS/rail smoke test failed"; exit 1; }
 
       - name: Verify only system dylibs (no brew/openssl dylib leaked in)
         run: |
