@@ -28,12 +28,18 @@ Submit the repo at https://mcp.so/submit (just the GitHub URL). Auto-pulls READM
 
 ## Needs a package artifact first
 
-### 4. Official MCP registry (registry.modelcontextprotocol.io)  **[needs go: one command]**
-Staged and ready — only the final publish (GitHub OAuth) remains:
-- [x] `server.json` in this repo (`io.github.javimosch/peage-mcp`, mcpb transport).
-- [x] `.mcpb` bundle built via `./package.sh` (manifest + linux binary; extract-and-run verified).
-- [x] GitHub release **v0.1.2** cut with `peage-mcp.mcpb` attached; the `releases/latest/download/peage-mcp.mcpb` URL in `server.json` resolves (HTTP 200).
-- [ ] `mcp-publisher login github` (OAuth as javimosch → owns `io.github.javimosch/*`, no DNS proof needed) then `mcp-publisher publish`. **[needs go]**
+### 4. Official MCP registry (registry.modelcontextprotocol.io)  ✅ PUBLISHED
+**Live as `fr.intrane/peage-mcp` v0.1.2 (status: active).** Query:
+`curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=peage'`
+- [x] `server.json` — schema `2025-12-11`, mcpb package pinned to the `v0.1.2` release + `fileSha256`.
+- [x] `.mcpb` bundle via `./package.sh`; GitHub release v0.1.2 (extract-and-run verified).
+- [x] **DNS auth** on `intrane.fr` (not GitHub) → the branded `fr.intrane/*` namespace.
+
+**Re-publishing a new version:** bump `version` + the mcpb URL/`fileSha256`, then
+`mcp-publisher login dns --domain intrane.fr --private-key <hex>` and `mcp-publisher publish`.
+The auth key is in the vault-adjacent backup `~/backups/peage-mcp/mcp-registry-dns.txt`
+(and the apex TXT `v=MCPv1; k=ed25519; p=…` on intrane.fr must stay in DNS). If the key is
+lost, generate a new ed25519 pair and update the apex TXT — that re-grants the namespace.
 
 Note: the bundled binary is **linux/x86_64**. Most Claude Desktop users are mac/windows, so
 a cross-compiled bundle (machin → darwin/windows) is the follow-up that widens reach.
