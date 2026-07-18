@@ -42,7 +42,7 @@ jobs:
             --pattern 'machin-*-darwin-arm64' --output "$HOME/.local/bin/machin"
           chmod +x "$HOME/.local/bin/machin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/machin" version
+          "$HOME/.local/bin/machin" guide >/dev/null && echo "machin ready ($TAG)"
 
       # ---- arm64 slice: native build + real run + live TLS (the verified path) --------
       - name: Build arm64 (native) with static OpenSSL
