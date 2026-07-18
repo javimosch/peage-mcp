@@ -7,9 +7,10 @@ everything else is prepped in this repo.
 
 ## Ready now (no packaging needed)
 
-### 1. awesome-mcp-servers  — the canonical community list  **[needs go: open a PR]**
-Repo: https://github.com/punkpeye/awesome-mcp-servers (Finance / Payments section).
-Ready-to-paste entry (alphabetical within the section):
+### 1. awesome-mcp-servers  — the canonical community list  ✅ PR OPEN
+Repo: https://github.com/punkpeye/awesome-mcp-servers (Finance & Fintech section).
+**PR: https://github.com/punkpeye/awesome-mcp-servers/pull/10381** (placed after `forum-labs/payfetch`).
+Entry used:
 
 ```markdown
 - [javimosch/peage-mcp](https://github.com/javimosch/peage-mcp) 🏎️ ☁️ — Give your agent a prepaid **fiat** wallet: pay any API per call in cents (no crypto, no subscriptions), with spending caps and publicly verifiable signed receipts. One static binary.
@@ -27,16 +28,15 @@ Submit the repo at https://mcp.so/submit (just the GitHub URL). Auto-pulls READM
 
 ## Needs a package artifact first
 
-### 4. Official MCP registry (registry.modelcontextprotocol.io)  **[needs go]**
-`server.json` is staged in this repo (`io.github.javimosch/peage-mcp`, mcpb transport).
-peage-mcp is a single static binary, so the registry-native distribution is an **`.mcpb`
-bundle** attached to a GitHub release. Steps:
-1. `./build.sh` then package the binary + a `manifest.json` into `peage-mcp.mcpb` (a zip).
-2. Cut a GitHub release `v0.1.0`, attach `peage-mcp.mcpb`.
-3. `mcp-publisher login github` (OAuth as javimosch → owns the `io.github.javimosch/*` namespace).
-4. `mcp-publisher publish` (reads `server.json`).
-The `io.github.javimosch/*` namespace needs no DNS proof — GitHub auth is enough. A
-`fr.intrane/peage-mcp` name would need an intrane.fr DNS TXT record instead.
+### 4. Official MCP registry (registry.modelcontextprotocol.io)  **[needs go: one command]**
+Staged and ready — only the final publish (GitHub OAuth) remains:
+- [x] `server.json` in this repo (`io.github.javimosch/peage-mcp`, mcpb transport).
+- [x] `.mcpb` bundle built via `./package.sh` (manifest + linux binary; extract-and-run verified).
+- [x] GitHub release **v0.1.2** cut with `peage-mcp.mcpb` attached; the `releases/latest/download/peage-mcp.mcpb` URL in `server.json` resolves (HTTP 200).
+- [ ] `mcp-publisher login github` (OAuth as javimosch → owns `io.github.javimosch/*`, no DNS proof needed) then `mcp-publisher publish`. **[needs go]**
+
+Note: the bundled binary is **linux/x86_64**. Most Claude Desktop users are mac/windows, so
+a cross-compiled bundle (machin → darwin/windows) is the follow-up that widens reach.
 
 ### 5. Smithery (smithery.ai)  — lower priority
 Smithery is hosted and expects a Docker/npm deployable; a local stdio binary is an awkward
