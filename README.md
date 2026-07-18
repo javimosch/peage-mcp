@@ -36,9 +36,10 @@ the agent's business.
 ## The 60-second demo
 
 Ask your agent: *"set up a peage wallet, then fetch https://peage.intrane.fr/demo/fortune
-as a paid request"* — it will mint the wallet, hit the 1-cent toll, get a 402 with exact
-funding instructions, ask you to pay a top-up link, and retry successfully. That's the
-whole agent-payment loop, live.
+as a paid request"* — it mints a wallet that comes with **free starter credit**, so it pays
+the 1-cent toll and gets its fortune **on the first try, no human needed**. When the free
+credit runs out, `peage_topup` hands you a Stripe link to fund more. That's the whole
+agent-payment loop — and the agent completes it before you touch your card.
 
 ## Security model
 
