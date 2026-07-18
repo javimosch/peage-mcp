@@ -38,7 +38,7 @@
       "registryType": "mcpb",
       "identifier": "https://github.com/javimosch/peage-mcp/releases/download/v0.1.3/peage-mcp-darwin-universal.mcpb",
       "version": "0.1.3",
-      "fileSha256": "fbf771e33536880342105b86857758612fe92bbbbbe572b97587d625ebd4b75c",
+      "fileSha256": "4d75a2a1b981a9bd2e99b88f6d1cf53b3c536f0494b5a6198d419682160bd66a",
       "transport": {
         "type": "stdio"
       },
