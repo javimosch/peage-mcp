@@ -1,0 +1,37 @@
+{
+  "manifest_version": "0.2",
+  "name": "peage-mcp",
+  "display_name": "péage — give your agent a wallet",
+  "version": "0.1.2",
+  "description": "Give your agent a prepaid fiat wallet — pay any API per call in cents, no crypto, no subscriptions, with spending caps.",
+  "long_description": "peage-mcp puts a prepaid EUR wallet from the peage rail (https://peage.intrane.fr) into any MCP-capable agent. The agent mints a wallet (new wallets include free starter credit), pays APIs per call in cents via a signed-receipt flow, and stays inside spending caps you control. The human appears once: paying a Stripe top-up link. One static machin (MFL) binary — no Node, no Python.",
+  "author": { "name": "Javier Arancibia", "url": "https://intrane.fr" },
+  "homepage": "https://peage.intrane.fr",
+  "documentation": "https://github.com/javimosch/peage-mcp",
+  "repository": { "type": "git", "url": "https://github.com/javimosch/peage-mcp" },
+  "license": "MIT",
+  "keywords": ["payments", "agents", "fiat", "stripe", "402", "wallet"],
+  "server": {
+    "type": "binary",
+    "entry_point": "peage-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/peage-mcp",
+      "args": ["serve"],
+      "env": { "PEAGE_URL": "https://peage.intrane.fr" }
+    }
+  },
+  "tools": [
+    { "name": "peage_setup", "description": "Mint the wallet once (includes free starter credit); token stored locally" },
+    { "name": "peage_status", "description": "Balance, escrow, caps, recent charges" },
+    { "name": "peage_topup", "description": "Stripe Checkout URL to fund the wallet — the human pays once" },
+    { "name": "peage_paid_request", "description": "Call any peage-metered API with the wallet attached" },
+    { "name": "peage_set_limits", "description": "Per-call and per-merchant daily spending caps" },
+    { "name": "peage_verify_receipt", "description": "Publicly verify any signed charge receipt" },
+    { "name": "peage_solvency", "description": "Audit the rail's live ledger invariant" },
+    { "name": "peage_services", "description": "Discover peage-metered APIs the agent can pay for" }
+  ],
+  "compatibility": {
+    "platforms": ["linux"],
+    "runtimes": {}
+  }
+}
