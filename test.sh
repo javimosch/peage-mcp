@@ -17,25 +17,29 @@ OUT=$(printf '%s\n' \
   '{"jsonrpc":"2.0","id":3,"method":"tools/list"}' \
   '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"peage_solvency","arguments":{}}}' \
   '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"peage_status","arguments":{}}}' \
-  '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"nope","arguments":{}}}' \
-  '{"jsonrpc":"2.0","id":7,"method":"bogus/method"}' \
+  '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"peage_feedback","arguments":{"message":"test from peage-mcp test.sh","kind":"note","context":"automated test","id":"mcp-test-feedback"}}}' \
+  '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"nope","arguments":{}}}' \
+  '{"jsonrpc":"2.0","id":8,"method":"bogus/method"}' \
   | ./peage-mcp serve 2>/dev/null)
 
 L() { echo "$OUT" | sed -n "${1}p"; }
 J() { python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
 
-[ "$(echo "$OUT" | wc -l)" = "7" ] || fail "expected 7 responses, got $(echo "$OUT" | wc -l)"; ok "7 responses for 7 requests (notification ignored)"
+[ "$(echo "$OUT" | wc -l)" = "8" ] || fail "expected 8 responses, got $(echo "$OUT" | wc -l)"; ok "8 responses for 8 requests (notification ignored)"
 [ "$(L 1 | J "['result']['protocolVersion']")" = "2025-06-18" ] || fail init-proto; ok "initialize echoes protocolVersion"
 [ "$(L 1 | J "['result']['serverInfo']['name']")" = "peage-mcp" ] || fail init-name; ok "serverInfo present"
 [ "$(L 2 | J "['result']")" = "{}" ] || fail ping; ok "ping -> {}"
-[ "$(L 3 | J "['result']['tools'].__len__()")" = "8" ] || fail tools-count; ok "tools/list has 8 tools"
+[ "$(L 3 | J "['result']['tools'].__len__()")" = "9" ] || fail tools-count; ok "tools/list has 9 tools"
 L 3 | J "['result']['tools'][3]['inputSchema']['required']" | grep -q url || fail schema; ok "paid_request schema has required url"
 L 3 | J "['result']['tools'][7]['name']" | grep -q peage_services || fail services-tool; ok "peage_services tool present"
+L 3 | J "['result']['tools'][8]['name']" | grep -q peage_feedback || fail feedback-tool; ok "peage_feedback tool present"
 [ "$(L 4 | J "['result']['isError']")" = "False" ] || fail solvency-call; ok "peage_solvency call works (live rail)"
 L 4 | python3 -c "import json,sys; r=json.load(sys.stdin); inner=json.loads(r['result']['content'][0]['text']); assert inner['solvent'] is True, inner" || fail solvency-inner; ok "solvency text is valid JSON, solvent:true"
 [ "$(L 5 | J "['result']['isError']")" = "True" ] || fail status-nowallet; ok "peage_status without wallet -> isError"
 L 5 | J "['result']['content'][0]['text']" | grep -q peage_setup || fail status-hint; ok "no-wallet error tells the agent to run peage_setup"
-[ "$(L 6 | J "['error']['code']")" = "-32602" ] || fail unknown-tool; ok "unknown tool -> -32602"
-[ "$(L 7 | J "['error']['code']")" = "-32601" ] || fail unknown-method; ok "unknown method -> -32601"
+[ "$(L 6 | J "['result']['isError']")" = "False" ] || fail feedback-call; ok "peage_feedback call works (no wallet needed)"
+L 6 | J "['result']['content'][0]['text']" | grep -q '"ok"' || fail feedback-ok; ok "feedback response has ok field"
+[ "$(L 7 | J "['error']['code']")" = "-32602" ] || fail unknown-tool; ok "unknown tool -> -32602"
+[ "$(L 8 | J "['error']['code']")" = "-32601" ] || fail unknown-method; ok "unknown method -> -32601"
 
 echo "ALL $PASS TESTS PASSED"

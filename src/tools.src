@@ -131,6 +131,26 @@ func tool_solvency(args) (text, is_error) {
     text = resp
 }
 
+// tool_feedback: open endpoint, no wallet required. Reports bugs/ideas/notes
+// to the rail operator. Never fails the caller — a failed POST is reported, not raised.
+func tool_feedback(args) (text, is_error) {
+    is_error = 0
+    mv, merr := json_get(args, ".message")
+    if merr != "" { is_error = 1  text = "{\"error\":\"message required\"}"  return }
+    msg := trim(unq(mv))
+    if msg == "" { is_error = 1  text = "{\"error\":\"message required (non-empty)\"}"  return }
+    body := "{\"message\":" + json(msg)
+    kv, kerr := json_get(args, ".kind")
+    if kerr == "" { body = body + ",\"kind\":" + kv }
+    cv, cerr := json_get(args, ".context")
+    if cerr == "" { body = body + ",\"context\":" + cv }
+    body = body + ",\"app\":\"peage-mcp\",\"version\":\"" + app_version() + "\"}"
+    status, resp, herr := http_request("POST", rail_url() + "/v1/feedback", []string{"content-type: application/json"}, body)
+    if herr != "" { is_error = 1  text = "{\"error\":\"rail unreachable\",\"detail\":" + json(herr) + "}"  return }
+    if status != 200 { is_error = 1  text = "{\"error\":\"rail rejected feedback\",\"status\":" + str(status) + ",\"body\":" + json(resp) + "}"  return }
+    text = resp
+}
+
 // dispatch by tool name -> (text, is_error, known)
 func call_tool(name, args) (text, is_error, known) {
     known = 1
@@ -142,5 +162,6 @@ func call_tool(name, args) (text, is_error, known) {
     if name == "peage_verify_receipt" { text, is_error = tool_verify_receipt(args)  return }
     if name == "peage_solvency" { text, is_error = tool_solvency(args)  return }
     if name == "peage_services" { text = services_json()  is_error = 0  return }
+    if name == "peage_feedback" { text, is_error = tool_feedback(args)  return }
     known = 0
 }
