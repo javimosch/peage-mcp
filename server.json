@@ -6,13 +6,13 @@
     "url": "https://github.com/javimosch/peage-mcp",
     "source": "github"
   },
-  "version": "0.1.4",
+  "version": "0.1.5",
   "websiteUrl": "https://peage.intrane.fr",
   "packages": [
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/javimosch/peage-mcp/releases/download/v0.1.4/peage-mcp.mcpb",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "fileSha256": "461c039c8577d751a3c5e9d1c7336750ffaf7b443686fd9ad8d4992510aa64f6",
       "transport": {
         "type": "stdio"
@@ -37,7 +37,7 @@
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/javimosch/peage-mcp/releases/download/v0.1.4/peage-mcp-darwin-universal.mcpb",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "fileSha256": "77715411c295b0187461ba5ff44e132dfe2ba9b28d6ada06b4ea9e6e6b4039f8",
       "transport": {
         "type": "stdio"
